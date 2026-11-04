@@ -1,46 +1,32 @@
-
-name: Build Music Player APK
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-
+name: Android Build
+on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Extract project
+      - name: Find project (unzip if needed)
         run: |
-          mkdir project
-          unzip -q MusicPlayer-phase1.zip -d project
-          GRADLEW=$(find project -name gradlew -type f | head -n 1)
-          if [ -z "$GRADLEW" ]; then
-            echo "Gradle wrapper not found"
-            exit 1
+          if [ -z "$(find . -name settings.gradle.kts -not -path './.git/*')" ]; then
+            for z in $(find . -name '*.zip' -not -path './.git/*'); do unzip -qo "$z"; done
           fi
-          echo "PROJECT_DIR=$(dirname "$GRADLEW")" >> $GITHUB_ENV
+          S=$(find . -name settings.gradle.kts -not -path './.git/*' | head -n1)
+          if [ -z "$S" ]; then echo "settings.gradle.kts not found"; exit 1; fi
+          echo "PROJECT_DIR=$(dirname "$S")" >> $GITHUB_ENV
 
-      - name: Build APK
-        run: |
-          cd "$PROJECT_DIR"
-          chmod +x gradlew
-          ./gradlew assembleDebug
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: 8.10.2 }
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - run: gradle assembleDebug
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: Music-Player-APK
-          path: project/**/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          name: Cinema-debug-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
